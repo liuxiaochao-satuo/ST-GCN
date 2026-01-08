@@ -7,8 +7,16 @@ backup/*
 .vscode
 model/*
 *.pt
+*.pth
+*.pth.tar
+*.ckpt
+*.h5
 *.caffemodel
 cache/
+
+# 模型检查点目录
+checkpoints/
+mmpose/checkpoints/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
