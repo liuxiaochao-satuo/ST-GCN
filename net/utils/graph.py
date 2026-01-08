@@ -16,6 +16,7 @@ class Graph():
             refer to https://github.com/CMU-Perceptual-Computing-Lab/openpose#output
         - ntu-rgb+d: Is consists of 25 joints. For more information, please
             refer to https://github.com/shahroudy/NTURGB-D
+        - coco21: Is consists of 21 joints (COCO 17 points + 4 foot keypoints)
 
         max_hop (int): the maximal distance between two connected nodes
         dilation (int): controls the spacing between the kernel points
@@ -70,6 +71,34 @@ class Graph():
             neighbor_link = [(i - 1, j - 1) for (i, j) in neighbor_1base]
             self.edge = self_link + neighbor_link
             self.center = 2
+        elif layout == 'coco21':
+            # 21点图结构: COCO 17点 + 4个脚部关键点
+            # 0: nose, 1: left_eye, 2: right_eye, 3: left_ear, 4: right_ear
+            # 5: left_shoulder, 6: right_shoulder, 7: left_elbow, 8: right_elbow
+            # 9: left_wrist, 10: right_wrist, 11: left_hip, 12: right_hip
+            # 13: left_knee, 14: right_knee, 15: left_ankle, 16: right_ankle
+            # 17: left_heel, 18: right_heel, 19: left_foot, 20: right_foot
+            self.num_node = 21
+            self_link = [(i, i) for i in range(self.num_node)]
+            # 头部连接
+            head_links = [(0, 1), (0, 2), (1, 3), (2, 4)]  # nose->eyes, eyes->ears
+            # 躯干连接
+            trunk_links = [(0, 5), (0, 6), (5, 6), (5, 11), (6, 12), (11, 12)]  # 肩部和髋部
+            # 左臂连接
+            left_arm_links = [(5, 7), (7, 9)]  # left_shoulder->left_elbow->left_wrist
+            # 右臂连接
+            right_arm_links = [(6, 8), (8, 10)]  # right_shoulder->right_elbow->right_wrist
+            # 左腿连接
+            left_leg_links = [(11, 13), (13, 15), (15, 17), (15, 19)]  # left_hip->left_knee->left_ankle->left_heel/foot
+            # 右腿连接
+            right_leg_links = [(12, 14), (14, 16), (16, 18), (16, 20)]  # right_hip->right_knee->right_ankle->right_heel/foot
+            # 脚部额外连接
+            foot_links = [(17, 19), (18, 20)]  # heel->foot
+            
+            neighbor_link = (head_links + trunk_links + left_arm_links + right_arm_links + 
+                           left_leg_links + right_leg_links + foot_links)
+            self.edge = self_link + neighbor_link
+            self.center = 0  # 使用nose作为中心点
         # elif layout=='customer settings'
         #     pass
         else:
