@@ -4,7 +4,7 @@
 统一视频的帧率和GOP，提高子动作级裁剪精度
 由于双杠前摆、后摆等子动作持续时间较短（约50-70帧），若视频GOP过大，
 会导致基于关键帧的无重编码裁剪出现明显时间偏移，从而引入跨动作冗余帧。
-通过统一重编码，将GOP控制在12-15帧范围内，确保精确裁剪。
+通过统一重编码，将GOP控制在10-15帧范围内，确保精确裁剪。
 """
 
 import os
@@ -75,7 +75,7 @@ def recode_video(input_file, output_file, fps=50, gop=12, crf=18, preset='slow')
         input_file: 输入视频文件路径
         output_file: 输出视频文件路径
         fps: 目标帧率（默认50）
-        gop: GOP大小，控制在12-15帧范围内（默认12）
+        gop: GOP大小，控制在10-15帧范围内（默认12）
         crf: 质量控制参数 (18-28, 数值越小质量越高，默认18)
         preset: 编码预设 (ultrafast, superfast, veryfast, faster, fast, medium, slow, slower, veryslow)
     
@@ -230,9 +230,9 @@ def main():
         '--gop',
         type=int,
         default=12,
-        choices=range(12, 16),
-        metavar='[12-15]',
-        help='GOP大小，控制在12-15帧范围内（默认: 12）'
+        choices=range(10, 16),
+        metavar='[10-15]',
+        help='GOP大小，控制在10-15帧范围内（默认: 12）'
     )
     
     parser.add_argument(

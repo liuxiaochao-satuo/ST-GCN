@@ -49,17 +49,15 @@ DEFAULT_CHECKPOINT = os.path.join(
 
 # 动作类别映射
 ACTION_CLASSES = {
-    'jumping': 0,
-    'jump_to_leg_sit': 1,
-    'front_swing': 2,
-    'back_swing': 3,
-    'front_swing_down': 4,
-    'back_swing_down': 5,
+    'jump_to_leg_sit': 0,
+    'front_swing': 1,
+    'back_swing': 2,
+    'front_swing_down': 3,
+    'back_swing_down': 4,
 }
 
 # 动作标签的中文映射（用于从文件名自动识别）
 ACTION_NAME_MAPPING = {
-    'jumping': ['jumping', '起跳', 'jump'],
     'jump_to_leg_sit': ['jump_to_leg_sit', '跳上成分腿坐', 'jump_to', 'leg_sit', '支撑'],
     'front_swing': ['front_swing', '前摆', '前摆', 'front'],
     'back_swing': ['back_swing', '后摆', '后摆', 'back'],
@@ -136,6 +134,13 @@ def extract_keypoints_from_video(
     valid_frames = 0
     last_nose_pos = None  # 如需多人跟踪，可使用该变量，这里暂未启用
     
+    # 诊断统计信息
+    no_detection_count = 0  # 未检测到任何人的帧数
+    low_confidence_count = 0  # 置信度低于阈值的帧数
+    total_detected_persons = 0  # 总共检测到的人数
+    max_avg_score = 0.0  # 最大平均置信度
+    min_avg_score = 1.0  # 最小平均置信度（仅统计有效帧）
+    
     print("开始提取关键点...")
     
     # 处理视频帧
@@ -156,28 +161,39 @@ def extract_keypoints_from_video(
             batch_results = inference_bottomup(model, frame)
             if not batch_results:
                 frame_keypoints = None
+                no_detection_count += 1
             else:
                 results = batch_results[0]
                 pred_instances = results.pred_instances
                 # 将预测结果拆分为每个人一个字典，包含 keypoints 和 keypoint_scores
                 instances = split_instances(pred_instances)
+                
+                total_detected_persons += len(instances)
 
                 # 过滤置信度较低的实例
                 filtered_instances = []
+                max_inst_score = 0.0
                 for inst in instances:
                     if 'keypoint_scores' in inst:
                         avg_score = float(np.mean(inst['keypoint_scores']))
+                        max_inst_score = max(max_inst_score, avg_score)
                         if avg_score >= score_thr:
                             filtered_instances.append(inst)
 
                 if not filtered_instances:
                     frame_keypoints = None
+                    if len(instances) > 0:
+                        # 有检测到人但置信度太低
+                        low_confidence_count += 1
                 else:
                     # 简化：取置信度最高的一个人作为运动员
                     best_inst = max(
                         filtered_instances,
                         key=lambda x: float(np.mean(x['keypoint_scores']))
                     )
+                    avg_score = float(np.mean(best_inst['keypoint_scores']))
+                    max_avg_score = max(max_avg_score, avg_score)
+                    min_avg_score = min(min_avg_score, avg_score)
                     frame_keypoints = {
                         'keypoints': best_inst['keypoints'],
                         'keypoint_scores': best_inst['keypoint_scores'],
@@ -222,16 +238,38 @@ def extract_keypoints_from_video(
         
         frame_count += 1
         
-        if frame_count % 30 == 0:
-            print(f"  已处理 {frame_count}/{total_frames} 帧 (有效: {valid_frames})...", end='\r')
+        # 改进的进度提示：显示百分比和详细信息
+        if frame_count % 10 == 0 or frame_count == total_frames:
+            progress_pct = (frame_count / total_frames * 100) if total_frames > 0 else 0
+            print(f"  进度: {progress_pct:.1f}% ({frame_count}/{total_frames}) | "
+                  f"有效帧: {valid_frames} ({valid_frames/frame_count*100:.1f}%)", end='\r')
     
     cap.release()
-    print(f"\n  处理完成，共提取 {frame_count} 帧 (有效: {valid_frames})")
+    print()  # 换行
+    
+    # 输出详细统计信息
+    print(f"  处理完成，共提取 {frame_count} 帧 (有效: {valid_frames})")
     
     if valid_frames == 0:
-        print(f"警告: 视频 {video_path} 中没有检测到有效的关键点数据")
-        print("注意: 需要实现关键点提取逻辑，参考demo_mmpose.py中的_process_frame方法")
+        print(f"\n⚠️  警告: 视频 {Path(video_path).name} 中没有检测到有效的关键点数据")
+        print(f"\n诊断信息:")
+        print(f"  - 未检测到人体的帧数: {no_detection_count}/{frame_count} ({no_detection_count/frame_count*100:.1f}%)")
+        print(f"  - 置信度低于阈值({score_thr})的帧数: {low_confidence_count}/{frame_count}")
+        print(f"  - 总共检测到的人数: {total_detected_persons}")
+        if total_detected_persons > 0:
+            print(f"  - 平均每帧检测到: {total_detected_persons/frame_count:.2f} 人")
+        print(f"\n可能的原因:")
+        print(f"  1. 背景复杂或人体被遮挡")
+        print(f"  2. 人体姿态不在模型训练范围内")
+        print(f"  3. 视频质量较差（模糊、光照不足等）")
+        print(f"  4. 置信度阈值({score_thr})设置过高，可尝试降低阈值")
+        print(f"  5. 视频中人体过小或过大")
         return False
+    else:
+        # 输出成功统计
+        print(f"  ✓ 有效帧率: {valid_frames/frame_count*100:.1f}%")
+        if valid_frames > 0:
+            print(f"  ✓ 平均置信度范围: {min_avg_score:.3f} ~ {max_avg_score:.3f}")
     
     # 创建视频信息字典
     video_info = {
@@ -333,17 +371,22 @@ def batch_process_videos(
         return
     
     print(f"找到 {len(video_files)} 个视频文件")
+    print("=" * 60)
     
     success_count = 0
     failed_count = 0
+    skipped_count = 0
     
     for i, video_path in enumerate(sorted(video_files), 1):
-        print(f"\n[{i}/{len(video_files)}] 处理: {Path(video_path).name}")
+        progress_pct = (i / len(video_files) * 100)
+        print(f"\n[{i}/{len(video_files)}] ({progress_pct:.1f}%) 处理: {Path(video_path).name}")
+        print("-" * 60)
         
         # 自动识别动作标签
         action_label = auto_detect_action_label(str(video_path))
         if not action_label:
-            print(f"  无法自动识别动作标签，跳过")
+            print(f"  ⚠️  无法自动识别动作标签，跳过")
+            skipped_count += 1
             failed_count += 1
             continue
         
@@ -359,12 +402,17 @@ def batch_process_videos(
         
         if success:
             success_count += 1
+            print(f"  ✓ 成功")
         else:
             failed_count += 1
+            print(f"  ✗ 失败")
     
-    print(f"\n处理完成:")
-    print(f"  成功: {success_count}")
-    print(f"  失败: {failed_count}")
+    print("\n" + "=" * 60)
+    print(f"批量处理完成:")
+    print(f"  ✓ 成功: {success_count} ({success_count/len(video_files)*100:.1f}%)")
+    print(f"  ✗ 失败: {failed_count} ({failed_count/len(video_files)*100:.1f}%)")
+    if skipped_count > 0:
+        print(f"  ⚠️  跳过（无法识别标签）: {skipped_count}")
     print(f"  总计: {len(video_files)}")
     print(f"\n输出目录: {output_dir}")
 
