@@ -3,17 +3,20 @@ work_dir: ./work_dir/recognition/parallel-bars/ST_GCN
 # feeder
 feeder: feeder.feeder.Feeder
 train_feeder_args:
-  data_path: ./data/parallel-bars/train_data.npy
-  label_path: ./data/parallel-bars/train_label.pkl
+  # 使用我们刚刚生成的训练数据
+  data_path: ./data/training/train_data.npy
+  label_path: ./data/training/train_label.pkl
 test_feeder_args:
-  data_path: ./data/parallel-bars/val_data.npy
-  label_path: ./data/parallel-bars/val_label.pkl
+  # 使用我们刚刚生成的验证数据
+  data_path: ./data/training/val_data.npy
+  label_path: ./data/training/val_label.pkl
 
 # model
 model: net.st_gcn.Model
 model_args:
   in_channels: 3
-  num_class: 6  # 6个动作类别: jumping, jump_to_leg_sit, front_swing, back_swing, front_swing_down, back_swing_down
+  # 5个动作类别: jump_to_leg_sit, front_swing, back_swing, front_swing_down, back_swing_down
+  num_class: 5
   dropout: 0.5
   edge_importance_weighting: True
   graph_args:

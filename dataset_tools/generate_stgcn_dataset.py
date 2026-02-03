@@ -143,8 +143,8 @@ class ParallelBarsFeeder(torch.utils.data.Dataset):
         data_numpy[1][data_numpy[2] == 0] = 0
 
         # 获取标签索引
-        label = video_info.get('label_index', self.label[index])
-        assert self.label[index] == label
+        # 训练时以外部标签文件为准，避免早期JSON中label/label_index写错导致不一致
+        label = self.label[index]
 
         # 数据增强
         if self.random_shift:
@@ -236,12 +236,11 @@ def create_label_json(data_path: str, output_path: str):
     """
     # 动作类别映射
     action_classes = {
-        'jumping': 0,
-        'jump_to_leg_sit': 1,
-        'front_swing': 2,
-        'back_swing': 3,
-        'front_swing_down': 4,
-        'back_swing_down': 5,
+        'jump_to_leg_sit': 0,
+        'front_swing': 1,
+        'back_swing': 2,
+        'front_swing_down': 3,
+        'back_swing_down': 4,
     }
     
     label_info = {}
@@ -256,20 +255,55 @@ def create_label_json(data_path: str, output_path: str):
             with open(json_path, 'r', encoding='utf-8') as f:
                 video_info = json.load(f)
             
-            label = video_info.get('label', 'unknown')
-            label_index = video_info.get('label_index', -1)
+            # ---------- 优先从文件名推断动作类别 ----------
+            # 这样可以纠正早期JSON中 label / label_index 写错的问题
+            file_label = None
+            file_label_index = -1
+            lower_name = json_file.lower()
+            # 为避免 'front_swing' 先匹配到 'front_swing_down' 的情况，
+            # 按动作名称长度从长到短排序后再匹配
+            for action_name, idx in sorted(
+                action_classes.items(), key=lambda x: -len(x[0])
+            ):
+                if action_name in lower_name:
+                    file_label = action_name
+                    file_label_index = idx
+                    break
             
-            # 如果标签不在映射中，尝试从文件名推断
-            if label not in action_classes and label_index == -1:
-                # 从文件名中查找动作标签
-                for action_name in action_classes.keys():
-                    if action_name in json_file.lower():
-                        label = action_name
-                        label_index = action_classes[action_name]
-                        break
+            # ---------- 再从 JSON 内容获取（作为备用信息） ----------
+            json_label = video_info.get('label')
+            json_label_index = video_info.get('label_index', -1)
             
-            if label_index == -1 and label in action_classes:
-                label_index = action_classes[label]
+            # 组合逻辑：
+            # 1. 如果能从文件名解析出类别，则以文件名为准
+            # 2. 否则再尝试使用 JSON 中的标签信息
+            if file_label is not None:
+                label = file_label
+                label_index = file_label_index
+            else:
+                # 文件名未包含动作关键字，退回到 JSON 中的字段
+                label = json_label if json_label in action_classes else 'unknown'
+                if json_label_index in action_classes.values():
+                    # JSON 里已经是一个合法的 label_index
+                    label_index = json_label_index
+                    # 如果 label 为空但 index 合法，反查出类别名
+                    if label == 'unknown':
+                        # 反查类别名（仅用于日志/完整性）
+                        for name, idx in action_classes.items():
+                            if idx == label_index:
+                                label = name
+                                break
+                else:
+                    # JSON 中没有合法 index，根据 label 再次映射
+                    if label in action_classes:
+                        label_index = action_classes[label]
+                    else:
+                        label_index = -1
+            
+            # 简单一致性检查（可选日志）
+            if file_label is not None and json_label is not None and json_label != file_label:
+                # 说明之前的 JSON 中 label 写错了，用文件名纠正
+                pass  # 如有需要可以在这里打印一次调试信息
             
             label_info[sample_id] = {
                 'label': label,
