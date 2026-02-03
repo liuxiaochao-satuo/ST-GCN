@@ -1,8 +1,14 @@
 #!/usr/bin/env python
 import argparse
 import sys
+import os
 
-# torchlight
+# 优先使用当前仓库内的 torchlight，而不是系统里可能安装的同名包
+repo_dir = os.path.dirname(os.path.abspath(__file__))
+local_torchlight_path = os.path.join(repo_dir, 'torchlight')
+if local_torchlight_path not in sys.path:
+    sys.path.insert(0, local_torchlight_path)
+
 import torchlight
 from torchlight import import_class
 
