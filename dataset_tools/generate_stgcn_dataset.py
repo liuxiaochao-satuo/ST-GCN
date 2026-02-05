@@ -292,11 +292,11 @@ def create_label_json(data_path: str, output_path: str):
                         for name, idx in action_classes.items():
                             if idx == label_index:
                                 label = name
-                                break
+                        break
                 else:
                     # JSON 中没有合法 index，根据 label 再次映射
                     if label in action_classes:
-                        label_index = action_classes[label]
+                label_index = action_classes[label]
                     else:
                         label_index = -1
             
